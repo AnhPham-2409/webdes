@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Form</title>
+</head>
+
+<body>
+
+    <h1>House Form</h1>
+
+    <form id="houseForm">
+
+        <label for="area">Area:</label>
+        <input id="area" type="number" required>
+
+        <br><br>
+
+        <label for="bedrooms">Number of bedrooms:</label>
+        <input id="bedrooms" type="number" required>
+
+        <br><br>
+
+        <label for="location">Location:</label>
+
+        <select id="location" name="location">
+            <option value="hanoi">Hanoi</option>
+            <option value="hcmc">HCMC</option>
+            <option value="other">Others</option>
+        </select>
+
+        <button type="submit">Submit</button>
+
+    </form>
+
+    <p id="result"></p>
+
+    <script>
+        const form = document.getElementById("houseForm");
+        const result = document.getElementById("result");
+
+        form.addEventListener("submit", async function (event) {
+
+            event.preventDefault();
+
+            const area = document.getElementById("area").value;
+            const bedrooms = document.getElementById("bedrooms").value;
+            const location = document.getElementById("location").value;
+
+            try {
+                const response = await fetch(
+                    `/predict?area=${area}&bedrooms=${bedrooms}&location=${location}`
+                );
+
+                if (!response.ok) {
+                    throw new Error("Request failed");
+                }
+
+                const data = await response.json();
+
+                const formattedPrice = data.predict_price.toLocaleString();
+
+                result.textContent = `Predicted price: ${formattedPrice}`;
+
+            } catch (error) {
+
+                result.textContent = "Error: Could not get prediction.";
+
+                console.error(error);
+            }
+        });
+    </script>
+
+</body>
+</html>
