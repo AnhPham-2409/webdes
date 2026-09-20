@@ -1,0 +1,187 @@
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+
+app = FastAPI()
+
+
+class ItemCreate(BaseModel):
+    name: str
+    price: float
+
+
+class ItemPublic(ItemCreate):
+    id: int
+
+
+# Part A
+class ItemUpdate(BaseModel):
+    name: str | None = None
+    price: float | None = None
+
+
+# Part D: envelope for the list response
+class ItemListResponse(BaseModel):
+    items: list[ItemPublic]
+    total: int
+    skip: int
+    limit: int
+
+
+# Part E: toy prediction models
+class HousePriceRequest(BaseModel):
+    area_sqm: float = Field(gt=0)
+    bedrooms: int = Field(ge=0)
+    distance_to_center_km: float = Field(ge=0)
+
+
+class HousePricePrediction(BaseModel):
+    predicted_price: float
+    currency: str = "VND"
+
+
+_items: list[ItemPublic] = []
+_next_id = 1
+
+
+# find item or raise 404
+def _find_item(item_id: int) -> ItemPublic:
+    for item in _items:
+        if item.id == item_id:
+            return item
+    raise HTTPException(status_code=404, detail="item not found")
+
+
+# Part C: case-insensitive duplicate name check
+# exclude_id lets an item keep its own name when it is being updated
+def _check_duplicate_name(name: str, exclude_id: int | None = None) -> None:
+    for item in _items:
+        if item.id != exclude_id and item.name.lower() == name.lower():
+            raise HTTPException(
+                status_code=409, detail="Item with this name already exists"
+            )
+
+
+# Routes
+@app.get("/")
+def home():
+    return FileResponse("../frontend/items.html")
+
+
+# serve the house price form
+@app.get("/house")
+def house_form():
+    return FileResponse("../frontend/house_form.html")
+
+
+@app.get("/items/me")
+def read_me():
+    return "Welcome!"
+
+
+# get all items
+@app.get("/items", response_model=ItemListResponse)
+def list_items(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    min_price: float | None = None,
+    max_price: float | None = None,
+    q: str | None = Query(None, min_length=2),
+    sort_by: str = Query("id", pattern="^(id|name|price)$"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
+):
+    result = list(_items)
+
+    # filter
+    if min_price is not None:
+        result = [i for i in result if i.price >= min_price]
+    if max_price is not None:
+        result = [i for i in result if i.price <= max_price]
+    if q:
+        result = [i for i in result if q.lower() in i.name.lower()]
+
+    # sort
+    if sort_by == "name":
+        result.sort(key=lambda i: i.name.lower(), reverse=(order == "desc"))
+    else:
+        result.sort(key=lambda i: getattr(i, sort_by), reverse=(order == "desc"))
+
+    # total = after filtering, BEFORE slicing
+    total = len(result)
+
+    # paginate
+    return ItemListResponse(
+        items=result[skip : skip + limit],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+# get one item
+@app.get("/items/{item_id}", response_model=ItemPublic)
+def get_item(item_id: int):
+    return _find_item(item_id)
+
+
+# create an item
+@app.post("/items", response_model=ItemPublic, status_code=status.HTTP_201_CREATED)
+def create_item(item: ItemCreate):
+    global _next_id
+    _check_duplicate_name(item.name)  # Part C
+    new_item = ItemPublic(id=_next_id, **item.model_dump())
+    _items.append(new_item)
+    _next_id += 1
+    return new_item
+
+
+# update an item (full replace)
+@app.put("/items/{item_id}", response_model=ItemPublic)
+def update_item(item_id: int, updated: ItemCreate):
+    existing = _find_item(item_id)
+    if updated.name.lower() != existing.name.lower():  # Part C: only if renaming
+        _check_duplicate_name(updated.name, exclude_id=item_id)
+    existing.name = updated.name
+    existing.price = updated.price
+    return existing
+
+
+# Part A: partial update, only touch the fields the client sent
+@app.patch("/items/{item_id}", response_model=ItemPublic)
+def patch_item(item_id: int, changes: ItemUpdate):
+    existing = _find_item(item_id)
+    data = changes.model_dump(exclude_unset=True)
+
+    # an explicit null would break the item, so reject it
+    if any(v is None for v in data.values()):
+        raise HTTPException(status_code=422, detail="fields cannot be null")
+
+    if "name" in data and data["name"].lower() != existing.name.lower():  # Part C
+        _check_duplicate_name(data["name"], exclude_id=item_id)
+
+    for field, value in data.items():
+        setattr(existing, field, value)
+    return existing
+
+
+# delete an item
+@app.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_item(item_id: int):
+    item = _find_item(item_id)
+    _items.remove(item)
+    return None
+
+
+# fake house price prediction
+@app.post("/predict/house-price", response_model=HousePricePrediction)
+def predict_house_price(req: HousePriceRequest):
+    price = (
+        req.area_sqm * 15_000_000
+        - req.distance_to_center_km * 5_000_000
+        + req.bedrooms * 20_000_000
+    )
+    return HousePricePrediction(predicted_price=price)
+
+
+app.mount("/static", StaticFiles(directory="../frontend"), name="static")
