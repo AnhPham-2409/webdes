@@ -12,23 +12,20 @@
 
     <form id="houseForm">
 
-        <label for="area">Area:</label>
-        <input id="area" type="number" required>
+        <label for="area">Area (sqm):</label>
+        <input id="area" type="number" step="any" required>
 
         <br><br>
 
         <label for="bedrooms">Number of bedrooms:</label>
-        <input id="bedrooms" type="number" required>
+        <input id="bedrooms" type="number" step="1" min="0" required>
 
         <br><br>
 
-        <label for="location">Location:</label>
+        <label for="distance">Distance to center (km):</label>
+        <input id="distance" type="number" step="any" min="0" required>
 
-        <select id="location" name="location">
-            <option value="hanoi">Hanoi</option>
-            <option value="hcmc">HCMC</option>
-            <option value="other">Others</option>
-        </select>
+        <br><br>
 
         <button type="submit">Submit</button>
 
@@ -44,24 +41,38 @@
 
             event.preventDefault();
 
-            const area = document.getElementById("area").value;
-            const bedrooms = document.getElementById("bedrooms").value;
-            const location = document.getElementById("location").value;
+            // the API expects JSON numbers, not strings
+            const payload = {
+                area_sqm: Number(document.getElementById("area").value),
+                bedrooms: Number(document.getElementById("bedrooms").value),
+                distance_to_center_km: Number(document.getElementById("distance").value)
+            };
 
             try {
-                const response = await fetch(
-                    `/predict?area=${area}&bedrooms=${bedrooms}&location=${location}`
-                );
-
-                if (!response.ok) {
-                    throw new Error("Request failed");
-                }
+                const response = await fetch("/predict/house-price", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
 
                 const data = await response.json();
 
-                const formattedPrice = data.predict_price.toLocaleString();
+                if (!response.ok) {
+                    // 422: FastAPI returns a list of {loc, msg} validation errors
+                    if (Array.isArray(data.detail)) {
+                        const msg = data.detail
+                            .map(e => `${e.loc[e.loc.length - 1]}: ${e.msg}`)
+                            .join("; ");
+                        result.textContent = `Error: ${msg}`;
+                    } else {
+                        result.textContent = `Error: ${data.detail || "Request failed"}`;
+                    }
+                    return;
+                }
 
-                result.textContent = `Predicted price: ${formattedPrice}`;
+                const formattedPrice = data.predicted_price.toLocaleString("vi-VN");
+
+                result.textContent = `Predicted price: ${formattedPrice} ${data.currency}`;
 
             } catch (error) {
 
