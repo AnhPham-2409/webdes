@@ -3,6 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <title>Items CRUD</title>
+  <style>
+    body { font-family: sans-serif; background: #f3fffa; color: #cf9494; padding: 20px; }
+    h2 { color: #f37485; }
+    input { padding: 6px; border: 1px solid #f4a6a6; border-radius: 4px; }
+    button { padding: 6px 12px; background: #ec868f; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #eca9b2; }
+
+    table { border-collapse: collapse; width: 100%; max-width: 600px; background: white; }
+    th, td { padding: 8px 12px; text-align: left; border: 1px solid #f8c8d8; }
+    th { background: #e9979e; color: white; }
+    tr:nth-child(even) td { background: #ffe3ec; }
+    tr:hover td { background: #ffd0e0; }
+  </style>
 </head>
 <body>
 
@@ -28,7 +41,12 @@
 
   <h2>All Items</h2>
   <button onclick="listItems()">Refresh List</button>
-  <pre id="list-result"></pre>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Name</th><th>Price</th></tr>
+    </thead>
+    <tbody id="list-body"></tbody>
+  </table>
 
   <script>
     const BASE_URL = "";
@@ -36,7 +54,19 @@
     async function listItems() {
       const res = await fetch(`${BASE_URL}/items`);
       const data = await res.json();
-      document.getElementById("list-result").textContent = JSON.stringify(data, null, 2);
+      const tbody = document.getElementById("list-body");
+      tbody.innerHTML = "";
+
+      // build one row per item, textContent avoids html injection
+      for (const item of data) {
+        const tr = document.createElement("tr");
+        for (const value of [item.id, item.name, item.price]) {
+          const td = document.createElement("td");
+          td.textContent = value;
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
     }
 
     async function getItem() {
