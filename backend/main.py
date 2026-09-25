@@ -23,7 +23,7 @@ class LoginRequest(BaseModel):
 
 @app.post("/login")
 def login(body: LoginRequest, response: Response):
-    # demo only: replace with a real user lookup and password hash check
+
     if body.username != "admin" or body.password != "123456":
         raise HTTPException(status_code=401, detail="invalid username or password")
     response.set_cookie("session", "fake-session-token", httponly=True, samesite="lax")
